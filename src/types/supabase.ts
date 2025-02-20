@@ -17,6 +17,7 @@ export interface Database {
           created_at: string
           position: number
           user_id: string
+          delegate: string
         }
         Insert: {
           id?: string
@@ -25,6 +26,7 @@ export interface Database {
           created_at?: string
           position: number
           user_id: string
+          delegate?: string
         }
         Update: {
           id?: string
@@ -33,6 +35,7 @@ export interface Database {
           created_at?: string
           position?: number
           user_id?: string
+          delegate?: string
         }
       }
     }

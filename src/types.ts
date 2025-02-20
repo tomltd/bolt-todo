@@ -5,4 +5,5 @@ export interface Todo {
   created_at: string;
   position: number;
   user_id: string;
+  delegate: 'T' | 'K';
 }

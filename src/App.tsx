@@ -9,6 +9,7 @@ import {
   useSensor,
   useSensors,
   DragEndEvent,
+  TouchSensor,
 } from '@dnd-kit/core';
 import {
   arrayMove,
@@ -24,9 +25,10 @@ interface SortableTodoItemProps {
   todo: Todo;
   onToggle: (id: string) => void;
   onDelete: (id: string) => void;
+  onDelegateToggle: (id: string) => void;
 }
 
-function SortableTodoItem({ todo, onToggle, onDelete }: SortableTodoItemProps) {
+function SortableTodoItem({ todo, onToggle, onDelete, onDelegateToggle }: SortableTodoItemProps) {
   const {
     attributes,
     listeners,
@@ -45,17 +47,15 @@ function SortableTodoItem({ todo, onToggle, onDelete }: SortableTodoItemProps) {
     <div
       ref={setNodeRef}
       style={style}
-      className={`flex items-center gap-3 bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm hover:shadow-md transition-shadow duration-200 ${
-        isDragging ? 'opacity-50' : ''
-      }`}
+      {...attributes}
+      {...listeners}
+      className={`group flex items-center gap-3 bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm hover:shadow-md transition-all duration-200 ${
+        isDragging ? 'opacity-50 shadow-lg scale-105' : ''
+      } active:cursor-grabbing touch-manipulation`}
     >
-      <button
-        {...listeners}
-        {...attributes}
-        className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 cursor-grab active:cursor-grabbing"
-      >
+      <div className="text-gray-400 group-hover:text-gray-600 dark:group-hover:text-gray-300">
         <GripVertical className="w-5 h-5" />
-      </button>
+      </div>
 
       <button
         onClick={() => onToggle(todo.id)}
@@ -77,6 +77,17 @@ function SortableTodoItem({ todo, onToggle, onDelete }: SortableTodoItemProps) {
       </span>
       
       <button
+        onClick={() => onDelegateToggle(todo.id)}
+        className={`px-2 py-1 rounded text-sm font-medium transition-colors duration-200 ${
+          todo.delegate === 'T'
+            ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300'
+            : 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300'
+        }`}
+      >
+        {todo.delegate}
+      </button>
+
+      <button
         onClick={() => onDelete(todo.id)}
         className="text-gray-400 hover:text-red-500 dark:text-gray-500 dark:hover:text-red-400 transition-colors duration-200"
       >
@@ -96,7 +107,17 @@ function App() {
   const [user, setUser] = useState(null);
 
   const sensors = useSensors(
-    useSensor(PointerSensor),
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: {
+        delay: 200,
+        tolerance: 8,
+      },
+    }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     })
@@ -149,7 +170,10 @@ function App() {
       return;
     }
 
-    setTodos(data);
+    setTodos(data.map(todo => ({
+      ...todo,
+      delegate: todo.delegate || 'T' // Set default delegate to 'T' if not set
+    })));
   };
 
   const toggleTheme = () => setIsDark(!isDark);
@@ -165,7 +189,8 @@ function App() {
         {
           text: newTodo.trim(),
           position,
-          user_id: user.id
+          user_id: user.id,
+          delegate: 'T' // Set default delegate to 'T'
         }
       ])
       .select()
@@ -201,6 +226,29 @@ function App() {
     );
   };
 
+  const toggleDelegate = async (id: string) => {
+    const todo = todos.find(t => t.id === id);
+    if (!todo) return;
+
+    const newDelegate = todo.delegate === 'T' ? 'K' : 'T';
+
+    const { error } = await supabase
+      .from('todos')
+      .update({ delegate: newDelegate })
+      .eq('id', id);
+
+    if (error) {
+      console.error('Error toggling delegate:', error);
+      return;
+    }
+
+    setTodos(prev =>
+      prev.map(todo =>
+        todo.id === id ? { ...todo, delegate: newDelegate } : todo
+      )
+    );
+  };
+
   const deleteTodo = async (id: string) => {
     const { error } = await supabase
       .from('todos')
@@ -225,20 +273,17 @@ function App() {
         
         const newItems = arrayMove(items, oldIndex, newIndex);
         
-        // Update positions in the database
-        const updates = newItems.map((item, index) => ({
-          id: item.id,
-          position: index,
-        }));
+        // Update positions one by one
+        newItems.forEach(async (item, index) => {
+          const { error } = await supabase
+            .from('todos')
+            .update({ position: index })
+            .eq('id', item.id);
 
-        supabase
-          .from('todos')
-          .upsert(updates)
-          .then(({ error }) => {
-            if (error) {
-              console.error('Error updating positions:', error);
-            }
-          });
+          if (error) {
+            console.error('Error updating position:', error);
+          }
+        });
 
         return newItems;
       });
@@ -249,7 +294,7 @@ function App() {
     return (
       <div className="min-h-screen bg-gradient-to-br from-indigo-100 to-purple-100 dark:from-gray-900 dark:to-gray-800 py-8 px-4 flex items-center justify-center">
         <div className="bg-white dark:bg-gray-800 p-8 rounded-lg shadow-md">
-          <h1 className="text-2xl font-bold text-gray-800 dark:text-white mb-6">Welcome to Todo App</h1>
+          <h1 className="text-2xl font-bold text-gray-800 dark:text-white mb-6">Welcome to Team Cat</h1>
           <button
             onClick={() => supabase.auth.signInWithPassword({
               email: 'user@example.com',
@@ -269,7 +314,7 @@ function App() {
       <div className="max-w-2xl mx-auto">
         <div className="flex justify-between items-center mb-8">
           <h1 className="text-4xl font-bold text-gray-800 dark:text-white">
-            Todo List
+            Team Cat
           </h1>
           <div className="flex gap-4">
             <button
@@ -322,6 +367,7 @@ function App() {
                   todo={todo}
                   onToggle={toggleTodo}
                   onDelete={deleteTodo}
+                  onDelegateToggle={toggleDelegate}
                 />
               ))}
             </div>
